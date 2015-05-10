@@ -253,20 +253,22 @@ class Cache extends AbstractExtendedCache
     {
         $tags = (array) $tag;
 
-        if (0 == count($tags)) {
+        if (0 === count($tags)) {
             return false;
         }
 
         try {
             $this->_repository
-                    ->createQueryBuilder('c')
-                    ->delete()
-                    ->where('c._tag IN (:tags)')
-                    ->setParameters(array('tags' => $this->_getContextualTags($tags)))
-                    ->getQuery()
-                    ->execute();
+                ->createQueryBuilder('c')
+                ->delete()
+                ->where('c._tag IN (:tags)')
+                ->setParameters(array('tags' => $this->_getContextualTags($tags)))
+                ->getQuery()
+                ->execute()
+            ;
             $this->_resetCacheEntity();
         } catch (\Exception $e) {
+            die('ERROR!');
             $this->log('warning', sprintf('Enable to remove cache for tags (%s) : %s', implode(',', $tags), $e->getMessage()));
 
             return false;

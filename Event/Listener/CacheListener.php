@@ -66,21 +66,21 @@ class CacheListener implements EventSubscriberInterface
      *
      * @var BackBee\Cache\CacheIdentifierGenerator
      */
-    private $identifier_generator;
+    private $identifierGenerator;
 
     /**
      * The page cache system.
      *
      * @var \BackBee\Cache\AbstractExtendedCache
      */
-    private $cache_page;
+    private $cachePage;
 
     /**
      * The content cache system.
      *
      * @var \BackBee\Cache\AbstractExtendedCache
      */
-    private $cache_content;
+    private $cacheContent;
 
     /**
      * The object to be rendered.
@@ -94,14 +94,14 @@ class CacheListener implements EventSubscriberInterface
      *
      * @var boolean
      */
-    private $page_cache_deletion_done = false;
+    private $pageCacheDeletionDone = false;
 
     /**
      * Cached contents already deleted.
      *
      * @var boolean
      */
-    private $content_cache_deletion_done = array();
+    private $contentCacheDeletionDone = [];
 
     /**
      * Returns an array of event names this subscriber wants to listen to.
@@ -110,14 +110,14 @@ class CacheListener implements EventSubscriberInterface
      */
     public static function getSubscribedEvents()
     {
-        return array(
+        return [
             'classcontent.prerender'     => 'onPreRenderContent',
             'classcontent.postrender'    => 'onPostRenderContent',
             'classcontent.onflush'       => 'onFlushContent',
             'nestednode.page.prerender'  => 'onPreRenderPage',
             'nestednode.page.postrender' => 'onPostRenderPage',
             'nestednode.page.onflush'    => 'onFlushPage',
-        );
+        ];
     }
 
     /**
@@ -131,19 +131,19 @@ class CacheListener implements EventSubscriberInterface
     {
         $this->application = $application;
         $this->validator = $validator;
-        $this->identifier_generator = $generator;
+        $this->identifierGenerator = $generator;
 
-        if (true === $this->application->getContainer()->has('cache.content')) {
-            $cache_content = $this->application->getContainer()->get('cache.content');
-            if (true === ($cache_content instanceof AbstractExtendedCache)) {
-                $this->cache_content = $cache_content;
+        if ($this->application->getContainer()->has('cache.content')) {
+            $cacheContent = $this->application->getContainer()->get('cache.content');
+            if ($cacheContent instanceof AbstractExtendedCache) {
+                $this->cacheContent = $cacheContent;
             }
         }
 
-        if (true === $this->application->getContainer()->has('cache.page')) {
-            $cache_page = $this->application->getContainer()->get('cache.page');
-            if (true === ($cache_page instanceof AbstractExtendedCache)) {
-                $this->cache_page = $cache_page;
+        if ($this->application->getContainer()->has('cache.page')) {
+            $cachePage = $this->application->getContainer()->get('cache.page');
+            if ($cachePage instanceof AbstractExtendedCache) {
+                $this->cachePage = $cachePage;
             }
         }
     }
@@ -158,14 +158,14 @@ class CacheListener implements EventSubscriberInterface
         // Checks if content caching is available
         $this->object = $event->getTarget();
 
-        if (false === ($this->object instanceof AbstractClassContent) || false === $this->checkCacheContentEvent()) {
+        if (!($this->object instanceof AbstractClassContent) || !$this->checkCacheContentEvent()) {
             return;
         }
 
         $renderer = $event->getRenderer();
         // Checks if cache data is available
-        $cache_id = $this->getContentCacheId($renderer);
-        if (false === $data = $this->cache_content->load($cache_id)) {
+        $cacheId = $this->getContentCacheId($renderer);
+        if (false === $data = $this->cacheContent->load($cacheId)) {
             return;
         }
 
@@ -173,7 +173,7 @@ class CacheListener implements EventSubscriberInterface
         $event->getDispatcher()->dispatch('cache.postrender', new Event($this->object, array($renderer, $data)));
         $this->application->debug(sprintf(
             'Found cache (id: %s) for rendering `%s(%s)` with mode `%s`.',
-            $cache_id,
+            $cacheId,
             get_class($this->object),
             $this->object->getUid(),
             $renderer->getMode()
@@ -189,13 +189,13 @@ class CacheListener implements EventSubscriberInterface
     {
         // Checks if content caching is available
         $this->object = $event->getTarget();
-        if (false === ($this->object instanceof AbstractClassContent) || false === $this->checkCacheContentEvent()) {
+        if (!($this->object instanceof AbstractClassContent) || !$this->checkCacheContentEvent()) {
             return;
         }
 
         $renderer = $event->getRenderer();
-        // Checks if cache_id is available
-        if (false === $cache_id = $this->getContentCacheId($renderer)) {
+        // Checks if cacheId is available
+        if (false === $cacheId = $this->getContentCacheId($renderer)) {
             return;
         }
 
@@ -209,13 +209,13 @@ class CacheListener implements EventSubscriberInterface
             ->getUnorderedChildrenUids($this->object)
         ;
 
-        $lifetime = $this->cache_content->getMinExpireByTag($uids, $lifetime);
+        $lifetime = $this->cacheContent->getMinExpireByTag($uids, $lifetime);
 
         $render = $event->getRender();
-        $this->cache_content->save($cache_id, $render, $lifetime, $this->object->getUid());
+        $this->cacheContent->save($cacheId, $render, $lifetime, $this->object->getUid());
         $this->application->debug(sprintf(
             'Save cache (id: %s, lifetime: %d) for rendering `%s(%s)` with mode `%s`.',
-            $cache_id,
+            $cacheId,
             $lifetime,
             get_class($this->object),
             $this->object->getUid(),
@@ -232,40 +232,50 @@ class CacheListener implements EventSubscriberInterface
     {
         // Checks if page caching is available
         $this->object = $event->getTarget();
-        if (false === ($this->object instanceof AbstractClassContent) || false === $this->checkCacheContentEvent(false)) {
+        if (!($this->object instanceof AbstractClassContent) || !$this->checkCacheContentEvent(false)) {
             return;
         }
 
-        $parent_uids = $this->application->getEntityManager()
+        $elementParentUid = $this->application->getEntityManager()->getConnection()->executeQuery(
+            'SELECT parent_uid FROM content_has_subcontent WHERE content_uid = :uid',
+            [
+                'uid' => $this->object->getUid()
+            ]
+        )->fetch();
+
+        $contents = [$this->object];
+        $elementParent = $this->application->getEntityManager()->find('BackBee\ClassContent\AbstractClassContent', $elementParentUid['parent_uid']);
+        if (null !== $elementParent) {
+            $contents[] = $elementParent;
+        }
+
+        $parentUids = $this->application->getEntityManager()
             ->getRepository('BackBee\ClassContent\Indexes\IdxContentContent')
-            ->getParentContentUids(array($this->object))
+            ->getParentContentUids($contents)
         ;
 
-        $content_uids = array_diff($parent_uids, $this->content_cache_deletion_done);
-        if (0 === count($content_uids)) {
+        $contentUids = array_diff($parentUids, $this->contentCacheDeletionDone);
+        if (0 === count($contentUids)) {
             return;
         }
 
-        $this->cache_content->removeByTag($content_uids);
-        $this->content_cache_deletion_done = array_merge($this->content_cache_deletion_done, $content_uids);
+        $this->cacheContent->removeByTag($contentUids);
+        $this->contentCacheDeletionDone = array_merge($this->contentCacheDeletionDone, $contentUids);
         $this->application->debug(sprintf(
             'Remove cache for `%s(%s)`.',
             get_class($this->object),
-            implode(', ', $content_uids)
+            implode(', ', $contentUids)
         ));
 
         if (false === $this->application->getContainer()->has('cache.page')) {
             return;
         }
 
-        $cache_page = $this->application->getContainer()->get('cache.page');
-        if (true === ($cache_page instanceof AbstractExtendedCache)) {
-            $node_uids = $this->application->getEntityManager()
-                ->getRepository('BackBee\ClassContent\Indexes\IdxContentContent')
-                ->getNodeUids($content_uids)
-            ;
-            $cache_page->removeByTag($node_uids);
-            $this->application->debug(sprintf('Remove cache for page %s.', implode(', ', $node_uids)));
+        $cachePage = $this->application->getContainer()->get('cache.page');
+        if (0 < count($contentUids) && $cachePage instanceof AbstractExtendedCache) {
+            $pageUids = $this->getContentsPageUids($contentUids);
+            $cachePage->removeByTag($pageUids);
+            $this->application->debug(sprintf('Remove cache for page %s.', implode(', ', $pageUids)));
         }
     }
 
@@ -279,22 +289,22 @@ class CacheListener implements EventSubscriberInterface
         // Checks if page caching is available
         $this->object = $event->getTarget();
 
-        if (false === ($this->object instanceof Page) || false === $this->checkCachePageEvent()) {
+        if (!($this->object instanceof Page) || false === $this->checkCachePageEvent()) {
             return;
         }
 
         // Checks if cache data is available
-        $cache_id = $this->getPageCacheId();
-        if (false === $data = $this->cache_page->load($cache_id)) {
+        $cacheId = $this->getPageCacheId();
+        if (false === $data = $this->cachePage->load($cacheId)) {
             return;
         }
 
         $renderer = $event->getRenderer();
         $renderer->setRender($data);
-        $event->getDispatcher()->dispatch('cache.postrender', new Event($this->object, array($renderer, $data)));
+        $event->getDispatcher()->dispatch('cache.postrender', new Event($this->object, [$renderer, $data]));
         $this->application->debug(sprintf(
             'Found cache (id: %s) for rendering `%s(%s)` with mode `%s`.',
-            $cache_id,
+            $cacheId,
             get_class($this->object),
             $this->object->getUid(),
             $renderer->getMode()
@@ -310,28 +320,28 @@ class CacheListener implements EventSubscriberInterface
     {
         // Checks if page caching is available
         $this->object = $event->getTarget();
-        if (false === ($this->object instanceof Page) || false === $this->checkCachePageEvent()) {
+        if (!($this->object instanceof Page) || !$this->checkCachePageEvent()) {
             return;
         }
 
-        // Checks if cache_id is available
-        if (false === $cache_id = $this->getPageCacheId()) {
+        // Checks if cacheId is available
+        if (false === $cacheId = $this->getPageCacheId()) {
             return;
         }
 
-        $column_uids = array();
+        $columnUids = [];
         foreach ($this->object->getContentSet() as $column) {
             if ($column instanceof AbstractClassContent) {
-                $column_uids[] = $column->getUid();
+                $columnUids[] = $column->getUid();
             }
         }
 
-        $lifetime = $this->cache_page->getMinExpireByTag($column_uids);
+        $lifetime = $this->cachePage->getMinExpireByTag($columnUids);
         $render = $event->getRender();
-        $this->cache_page->save($cache_id, $render, $lifetime, $this->object->getUid());
+        $this->cachePage->save($cacheId, $render, $lifetime, $this->object->getUid());
         $this->application->debug(sprintf(
             'Save cache (id: %s, lifetime: %d) for rendering `%s(%s)` with mode `%s`.',
-            $cache_id,
+            $cacheId,
             $lifetime,
             get_class($this->object),
             $this->object->getUid(),
@@ -348,32 +358,33 @@ class CacheListener implements EventSubscriberInterface
     {
         // Checks if page caching is available
         $this->object = $event->getTarget();
-        if (false === ($this->object instanceof Page) || false === $this->checkCachePageEvent(false)) {
+        if (!($this->object instanceof Page) || !$this->checkCachePageEvent(false)) {
             return;
         }
 
-        if (true === $this->page_cache_deletion_done) {
+        if ($this->pageCacheDeletionDone) {
             return;
         }
 
         $pages = ScheduledEntities::getScheduledEntityUpdatesByClassname(
             $this->application->getEntityManager(), 'BackBee\NestedNode\Page'
         );
+
         if (0 === count($pages)) {
             return;
         }
 
-        $page_uids = array();
+        $pageUids = [];
         foreach ($pages as $page) {
-            $page_uids[] = $page->getUid();
+            $pageUids[] = $page->getUid();
         }
 
-        $this->cache_page->removeByTag($page_uids);
-        $this->page_cache_deletion_done = true;
+        $this->cachePage->removeByTag($pageUids);
+        $this->pageCacheDeletionDone = true;
         $this->application->debug(sprintf(
             'Remove cache for `%s(%s)`.',
             get_class($this->object),
-            implode(', ', $page_uids)
+            implode(', ', $pageUids)
         ));
     }
 
@@ -381,43 +392,43 @@ class CacheListener implements EventSubscriberInterface
      * Checks the event and system validity then returns the content target, FALSE otherwise.
      *
      * @param \BackBee\Event\Event $event
-     * @param boolean              $check_status
+     * @param boolean              $checkStatus
      *
      * @return boolean
      */
-    private function checkCacheContentEvent($check_status = true)
+    private function checkCacheContentEvent($checkStatus = true)
     {
         // Checks if a service cache-control exists
-        if (null === $this->cache_content) {
+        if (null === $this->cacheContent) {
             return false;
         }
 
         // Checks if the target event is not a main contentset
         if (
             $this->object instanceof ContentSet
-            && true === is_array($this->object->getPages())
+            && is_array($this->object->getPages())
             && 0 < $this->object->getPages()->count()
         ) {
             return false;
         }
 
-        return true === $check_status ? $this->validator->isValid('cache_status', $this->object) : true;
+        return true === $checkStatus ? $this->validator->isValid('cache_status', $this->object) : true;
     }
 
     /**
      * Checks the event and system validity then returns the page target, FALSE otherwise.
      *
      * @param \BackBee\Event\Event $event
-     * @param boolean              $check_status
+     * @param boolean              $checkStatus
      *
      * @return boolean
      */
-    private function checkCachePageEvent($check_status = true)
+    private function checkCachePageEvent($checkStatus = true)
     {
-        return null !== $this->cache_page
+        return null !== $this->cachePage
             && true === $this->validator->isValid('page', $this->application->getRequest()->getUri())
             && (
-                true === $check_status
+                true === $checkStatus
                     ? $this->validator->isValid('cache_status', $this->object)
                     : true
             )
@@ -431,12 +442,12 @@ class CacheListener implements EventSubscriberInterface
      */
     private function getContentCacheId(AbstractRenderer $renderer)
     {
-        $cache_id = $this->identifier_generator->compute(
+        $cacheId = $this->identifierGenerator->compute(
             'content', $this->object->getUid().'-'.$renderer->getMode(),
             $renderer
         );
 
-        return md5('_content_'.$cache_id);
+        return md5('_content_'.$cacheId);
     }
 
     /**
@@ -447,5 +458,39 @@ class CacheListener implements EventSubscriberInterface
     private function getPageCacheId()
     {
         return $this->application->getRequest()->getUri();
+    }
+
+    private function getContentsPageUids(array $contentUids)
+    {
+        $contentUids = implode(', ', array_map(function ($uid) {
+            return '"'.$uid.'"';
+        }, $contentUids));
+
+        $contentUids = $this->application->getEntityManager()->getConnection()->executeQuery(sprintf(
+            'SELECT c.uid
+             FROM content c
+             WHERE c.uid IN (SELECT cs.parent_uid FROM content_has_subcontent cs WHERE cs.content_uid IN (%s))',
+            $contentUids
+        ))->fetchAll(\PDO::FETCH_COLUMN);
+
+        if (0 === count($contentUids)) {
+            return [];
+        }
+
+        $contentUids = implode(', ', array_map(function ($uid) {
+            return '"'.$uid.'"';
+        }, $contentUids));
+
+        return $this->application->getEntityManager()->getConnection()->executeQuery(sprintf(
+            'SELECT p.uid
+             FROM content c, page p
+             WHERE c.uid IN (SELECT cs.parent_uid FROM content_has_subcontent cs WHERE cs.content_uid IN (%s))
+             AND c.uid = p.contentset',
+            $contentUids
+        ))->fetchAll(\PDO::FETCH_COLUMN);
+
+        // return $this->application->getEntityManager()->getRepository('BackBee\NestedNode\Page')->findBy([
+        //     '_uid' => array_merge(['ca821970fdba9c0a9064a01360620220'], $pageUids),
+        // ]);
     }
 }

@@ -361,44 +361,48 @@ class IndexationRepository extends EntityRepository
     /**
      * Returns every main node attach to the provided content uids.
      *
-     * @param array $content_uids
+     * @param array $contentUids
      *
      * @return array
      */
-    public function getNodeUids(array $content_uids)
+    public function getNodeUids(array $contentUids)
     {
         $meta = $this->_em->getClassMetadata('BackBee\ClassContent\AbstractClassContent');
 
         $q = $this->_em->getConnection()
-                ->createQueryBuilder()
-                ->select('c.node_uid')
-                ->from($meta->getTableName(), 'c');
+            ->createQueryBuilder()
+            ->select('c.node_uid')
+            ->from($meta->getTableName(), 'c')
+            ->where('c.'.$meta->getColumnName('_uid').' IN (:ids)')
+            ->setParameter('ids', $contentUids)
+        ;
 
-        $q->andWhere('c.'.$meta->getColumnName('_uid').' IN (:ids)')
-              ->setParameter('ids', $content_uids);
-
-        return (false === empty($content_uids)) ? array_unique($q->execute()->fetchAll(\PDO::FETCH_COLUMN)) : array();
+        return !empty($contentUids) ? array_unique($q->execute()->fetchAll(\PDO::FETCH_COLUMN)) : [];
     }
 
     /**
      * Removes a set of Site-Content indexes.
      *
-     * @param string $site_uid
-     * @param array  $content_uids
+     * @param string $siteUid
+     * @param array  $contentUids
      *
-     * @return \BackBee\ClassContent\Repository\IndexationRepository
+     * @return self
      */
-    private function _removeIdxSiteContents($site_uid, array $content_uids)
+    private function _removeIdxSiteContents($siteUid, array $contentUids)
     {
-        if (0 < count($content_uids)) {
+        if (0 < count($contentUids)) {
             $this->getEntityManager()
-                    ->createQuery('DELETE FROM BackBee\ClassContent\Indexes\IdxSiteContent i
-                        WHERE i.site_uid=:site_uid
-                        AND i.content_uid IN (:content_uids)')
-                    ->setParameters(array(
-                        'site_uid' => $site_uid,
-                        'content_uids' => $content_uids, ))
-                    ->execute();
+                ->createQuery(
+                    'DELETE FROM BackBee\ClassContent\Indexes\IdxSiteContent i
+                     WHERE i.site_uid=:site_uid
+                     AND i.content_uid IN (:content_uids)'
+                )
+                ->setParameters([
+                    'site_uid'     => $siteUid,
+                    'content_uids' => $contentUids,
+                ])
+                ->execute()
+            ;
         }
 
         return $this;
@@ -410,7 +414,7 @@ class IndexationRepository extends EntityRepository
      * @param string $site_uid
      * @param array  $content_uids
      *
-     * @return \BackBee\ClassContent\Repository\IndexationRepository
+     * @return self
      */
     private function _replaceIdxContentContents(array $parent_uids)
     {
