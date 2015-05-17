@@ -262,13 +262,12 @@ class Cache extends AbstractExtendedCache
                 ->createQueryBuilder('c')
                 ->delete()
                 ->where('c._tag IN (:tags)')
-                ->setParameters(array('tags' => $this->_getContextualTags($tags)))
+                ->setParameters(array('tags' => $tags))
                 ->getQuery()
                 ->execute()
             ;
             $this->_resetCacheEntity();
         } catch (\Exception $e) {
-            die('ERROR!');
             $this->log('warning', sprintf('Enable to remove cache for tags (%s) : %s', implode(',', $tags), $e->getMessage()));
 
             return false;
@@ -395,7 +394,8 @@ class Cache extends AbstractExtendedCache
      */
     private function _getContextualId($id)
     {
-        return ($this->_prefix_key) ? md5($this->_prefix_key.$id) : $id;
+        return $id;
+        // return ($this->_prefix_key) ? md5($this->_prefix_key.$id) : $id;
     }
 
     /**

@@ -236,22 +236,9 @@ class CacheListener implements EventSubscriberInterface
             return;
         }
 
-        $elementParentUid = $this->application->getEntityManager()->getConnection()->executeQuery(
-            'SELECT parent_uid FROM content_has_subcontent WHERE content_uid = :uid',
-            [
-                'uid' => $this->object->getUid()
-            ]
-        )->fetch();
-
-        $contents = [$this->object];
-        $elementParent = $this->application->getEntityManager()->find('BackBee\ClassContent\AbstractClassContent', $elementParentUid['parent_uid']);
-        if (null !== $elementParent) {
-            $contents[] = $elementParent;
-        }
-
         $parentUids = $this->application->getEntityManager()
             ->getRepository('BackBee\ClassContent\Indexes\IdxContentContent')
-            ->getParentContentUids($contents)
+            ->getParentContentUids([$this->object])
         ;
 
         $contentUids = array_diff($parentUids, $this->contentCacheDeletionDone);

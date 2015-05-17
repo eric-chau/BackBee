@@ -51,7 +51,7 @@ class IndexationRepository extends EntityRepository
      *
      * @var boolean
      */
-    private $_replace_supported;
+    private $replaceSupported;
 
     /**
      * Initializes a new EntityRepository.
@@ -63,7 +63,7 @@ class IndexationRepository extends EntityRepository
     {
         parent::__construct($em, $class);
 
-        $this->_replace_supported = DriverFeatures::replaceSupported($em->getConnection()->getDriver());
+        $this->replaceSupported = DriverFeatures::replaceSupported($em->getConnection()->getDriver());
     }
 
     /**
@@ -80,7 +80,7 @@ class IndexationRepository extends EntityRepository
         }
 
         $command = 'REPLACE';
-        if (false === $this->_replace_supported) {
+        if (false === $this->replaceSupported) {
             // REPLACE command not supported, remove first then insert
             $this->removeOptContentTable($content);
             $command = 'INSERT';
@@ -212,7 +212,7 @@ class IndexationRepository extends EntityRepository
     {
         if (0 < count($content_uids)) {
             $command = 'REPLACE';
-            if (false === $this->_replace_supported) {
+            if (false === $this->replaceSupported) {
                 // REPLACE command not supported, remove first then insert
                 $this->_removeIdxSiteContents($site_uid, $content_uids);
                 $command = 'INSERT';
@@ -271,50 +271,36 @@ class IndexationRepository extends EntityRepository
      */
     public function getParentContentUids(array $contents)
     {
-        $meta = $this->_em->getClassMetadata('BackBee\ClassContent\Indexes\IdxContentContent');
+        $parentUids = [];
 
-        $q = $this->_em->getConnection()
-                ->createQueryBuilder()
-                ->select('c.'.$meta->getColumnName('content_uid'))
-                ->from($meta->getTableName(), 'c');
-
-        $p = $this->_em->getConnection()
-                ->createQueryBuilder()
-                ->select('j.parent_uid')
-                ->from('content_has_subcontent', 'j');
-
-        $index = 0;
-        $method = 'where';
-        $atleastone = false;
         foreach ($contents as $content) {
-            if (false === ($content instanceof AbstractClassContent)) {
-                continue;
+
+            $parent = $this->getContentParent($content);
+            while (null !== $parent) {
+                $parentUids[] = $parent->getUid();
+                $parent = $this->getContentParent($parent);
             }
-
-            if (true === $content->isElementContent()) {
-                continue;
-            }
-
-            if ($index !== 0) {
-                $method = 'orWhere';
-            }
-
-            $q->{$method}('c.'.$meta->getColumnName('subcontent_uid').' = :uid'.$index)
-              ->setParameter('uid'.$index, $content->getUid());
-
-            $p->{$method}('j.content_uid = :uid'.$index)
-              ->setParameter('uid'.$index, $content->getUid());
-
-            $index++;
-            $atleastone = true;
         }
 
-        return (true === $atleastone) ? array_unique(
-            array_merge(
-                $q->execute()->fetchAll(\PDO::FETCH_COLUMN),
-                $p->execute()->fetchAll(\PDO::FETCH_COLUMN)
-            )
-        ) : array();
+        return $parentUids;
+    }
+
+    private function getContentParent(AbstractClassContent $content)
+    {
+        $parentData = $this->_em->getConnection()->executeQuery(
+            'SELECT c1.parent_uid as uid, c2.classname as classname
+             FROM content_has_subcontent c1, content c2
+             WHERE content_uid = :uid
+             AND c1.parent_uid = c2.uid',
+            [
+                'uid' => $content->getUid()
+            ]
+        )->fetch();
+
+        return false !== $parentData
+            ? $this->_em->find($parentData['classname'], $parentData['uid'])
+            : null
+        ;
     }
 
     /**
@@ -338,7 +324,7 @@ class IndexationRepository extends EntityRepository
                 ->from($meta->getTableName(), 'c');
 
         $index = 0;
-        $atleastone = false;
+        $atLeastOne = false;
         foreach ($contents as $content) {
             if (false === ($content instanceof AbstractClassContent)) {
                 continue;
@@ -352,10 +338,10 @@ class IndexationRepository extends EntityRepository
                     ->setParameter('uid'.$index, $content->getUid());
 
             $index++;
-            $atleastone = true;
+            $atLeastOne = true;
         }
 
-        return (true === $atleastone) ? array_unique($q->execute()->fetchAll(\PDO::FETCH_COLUMN)) : array();
+        return (true === $atLeastOne) ? array_unique($q->execute()->fetchAll(\PDO::FETCH_COLUMN)) : array();
     }
 
     /**
@@ -420,7 +406,7 @@ class IndexationRepository extends EntityRepository
     {
         if (0 < count($parent_uids)) {
             $command = 'REPLACE';
-            if (false === $this->_replace_supported) {
+            if (false === $this->replaceSupported) {
                 // REPLACE command not supported, remove first then insert
                 $this->_removeIdxContentContents(array_keys($parent_uids));
                 $command = 'INSERT';
