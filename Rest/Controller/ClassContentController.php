@@ -104,7 +104,12 @@ class ClassContentController extends AbstractRestController
             $start = 0;
         } else {
             if (null !== $categoryName) {
-                $contents = $this->getClassContentByCategory($categoryName, $start, $count);
+                $contents = $this->getClassContentByCategory(
+                    $categoryName,
+                    $request->request->has('only_visible'),
+                    $start,
+                    $count
+                );
             } else {
                 $classnames = $this->getClassContentManager()->getAllClassContentClassnames();
                 $contents = $this->findContentsByCriterias($classnames, $start, $count);
@@ -565,9 +570,13 @@ class ClassContentController extends AbstractRestController
      *
      * @return null|Paginator
      */
-    private function getClassContentByCategory($name, $start, $count)
+    private function getClassContentByCategory($name, $onlyVisible, $start, $count)
     {
-        return $this->findContentsByCriterias($this->getClassContentClassnamesByCategory($name), $start, $count);
+        return $this->findContentsByCriterias(
+            $this->getClassContentClassnamesByCategory($name, $onlyVisible),
+            $start,
+            $count
+        );
     }
 
     /**
@@ -604,10 +613,10 @@ class ClassContentController extends AbstractRestController
      *
      * @return array
      */
-    private function getClassContentClassnamesByCategory($name)
+    private function getClassContentClassnamesByCategory($name, $onlyVisible)
     {
         try {
-            return $this->getCategoryManager()->getClassContentClassnamesByCategory($name);
+            return $this->getCategoryManager()->getClassContentClassnamesByCategory($name, $onlyVisible);
         } catch (\InvalidArgumentException $e) {
             throw new NotFoundHttpException($e->getMessage());
         }

@@ -95,7 +95,7 @@ class CategoryManager
         return $this->categories;
     }
 
-    public function getClassContentClassnamesByCategory($name)
+    public function getClassContentClassnamesByCategory($name, $onlyVisible = false)
     {
         $category = $this->getCategory($name);
         if (null === $category) {
@@ -104,7 +104,9 @@ class CategoryManager
 
         $classnames = [];
         foreach ($category->getBlocks() as $block) {
-            $classnames[] = AbstractClassContent::getClassnameByContentType($block->type);
+            if (false === $onlyVisible || (true === $onlyVisible && true === $block->visible)) {
+                $classnames[] = AbstractClassContent::getClassnameByContentType($block->type);
+            }
         }
 
         return $classnames;
