@@ -23,6 +23,11 @@
 
 namespace BackBee\Rest\EventListener;
 
+use BackBee\Controller\Exception\FrontControllerException;
+use BackBee\Event\Listener\AbstractPathEnabledListener;
+use BackBee\Security\Exception\SecurityException;
+use BackBee\Rest\Exception\ValidationException;
+
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\GetResponseForExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -30,9 +35,6 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 use Symfony\Component\Security\Core\Exception\AccountStatusException;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\InsufficientAuthenticationException;
-use BackBee\Event\Listener\AbstractPathEnabledListener;
-use BackBee\Controller\Exception\FrontControllerException;
-use BackBee\Security\Exception\SecurityException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
@@ -66,7 +68,10 @@ class ExceptionListener extends AbstractPathEnabledListener
 
         if (isset($this->mapping[$exceptionClass])) {
             $code = isset($this->mapping[$exceptionClass]['code']) ? $this->mapping[$exceptionClass]['code'] : 500;
-            $message = isset($this->mapping[$exceptionClass]['message']) ? $this->mapping[$exceptionClass]['message'] : $exception->getMessage();
+            $message = isset($this->mapping[$exceptionClass]['message'])
+                ? $this->mapping[$exceptionClass]['message']
+                : $exception->getMessage()
+            ;
 
             if (!$event->getResponse()) {
                 $event->setResponse(new Response());
@@ -80,20 +85,24 @@ class ExceptionListener extends AbstractPathEnabledListener
             }
             // keep the HTTP status code and headers
             $event->getResponse()->setStatusCode($exception->getStatusCode(), $exception->getMessage());
-            $event->getResponse()->headers->add(array('Content-Type' => 'application/json'));
+            $event->getResponse()->headers->add(['Content-Type' => 'application/json']);
 
-            if ($exception instanceof \BackBee\Rest\Exception\ValidationException) {
-                $event->getResponse()->setContent(json_encode(array('errors' => $exception->getErrorsArray())));
+            if ($exception instanceof ValidationException) {
+                $event->getResponse()->setContent(json_encode(['errors' => $exception->getErrorsArray()]));
             }else{
-                $event->getResponse()->setContent(json_encode(array('exception' => $exception->getMessage())));
+                $event->getResponse()->setContent(json_encode(['exception' => $exception->getMessage()]));
             }
         } elseif ($exception instanceof FrontControllerException) {
             if (!$event->getResponse()) {
                 $event->setResponse(new Response());
             }
+
             // keep the HTTP status code
             $event->getResponse()->setStatusCode($exception->getStatusCode());
-        } elseif ($exception instanceof AccountStatusException ||$exception instanceof InsufficientAuthenticationException) {
+        } elseif (
+            $exception instanceof AccountStatusException
+            || $exception instanceof InsufficientAuthenticationException
+        ) {
             // Forbidden access
             $this->setNewResponse($event, 403, $exception->getMessage());
         } elseif ($exception instanceof AuthenticationException || $exception instanceof AccessDeniedException) {

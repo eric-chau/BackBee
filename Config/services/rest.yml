@@ -95,3 +95,9 @@ services:
     rest.listener:
         class: %bbapp.rest.listener.class%
         arguments: [@service_container, @rest.metadata.annotation_reader, %rest.supported_paths%]
+
+    rest.sort.annotation.handler:
+        class: BackBee\Rest\Annotation\Handler\SortHandler
+        arguments: [@request]
+        tags:
+            - { name: "rest.annotation_handler", dispatch_event: false }
