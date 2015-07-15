@@ -94,6 +94,7 @@ kernel.exception:
 
 kernel.controller:
     listeners:
+        - [@rest.listener, onKernelController]
         - [@rest.listener.param_converter, onKernelController]
         - [@rest.listener.security, onKernelController]
         - [@rest.listener.validation, onKernelController]

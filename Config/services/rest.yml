@@ -9,6 +9,7 @@ parameters:
     bbapp.rest.listener_param_converter.class: BackBee\Rest\EventListener\ParamConverterListener
     bbapp.rest.listener_body.class: BackBee\Rest\EventListener\BodyListener
     bbapp.rest.listener_exception.class: BackBee\Rest\EventListener\ExceptionListener
+    bbapp.rest.listener.class: BackBee\Rest\Listener\RestListener
     bbapp.rest.listener_exception.mapping:
         Exception:
             code: 500
@@ -20,6 +21,8 @@ parameters:
         Symfony\Component\Security\Core\Exception\AuthenticationCredentialsNotFoundException:
             code: 401
             message: Authenticaton failed - public key not provided
+
+    rest.supported_paths: []
 
 services:
     rest.hydrator:
@@ -88,3 +91,7 @@ services:
     rest.metadata.cache:
         class:     BackBee\Rest\Metadata\Cache\FileCache
         arguments: ["%bbapp.cache.dir%/", %debug%]
+
+    rest.listener:
+        class: %bbapp.rest.listener.class%
+        arguments: [@service_container, @rest.metadata.annotation_reader, %rest.supported_paths%]
