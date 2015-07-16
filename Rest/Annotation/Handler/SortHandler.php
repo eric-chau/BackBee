@@ -11,7 +11,7 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 /**
  * @author Eric Chau <eric.chau@lp-digital.fr>
  */
-class SortHandler implements AnnotationHandlerInterface
+class SortHandler extends AbstractHandler
 {
     private $request;
 
@@ -25,15 +25,9 @@ class SortHandler implements AnnotationHandlerInterface
      */
     public function handle($annotation)
     {
-        if (!$this->supports($annotation)) {
-            throw new \InvalidArgumentException(sprintf(
-                '%s is not supported by %s.',
-                get_class($annotation),
-                __CLASS__
-            ));
-        }
+        parent::handle($annotation);
 
-        if (!$this->request->query->has('sort')) {
+        if (!$this->request->isMethod('GET') || !$this->request->query->has('sort')) {
             return;
         }
 

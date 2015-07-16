@@ -101,3 +101,9 @@ services:
         arguments: [@request]
         tags:
             - { name: "rest.annotation_handler", dispatch_event: false }
+
+    rest.response_format.annotation.handler:
+        class: BackBee\Rest\Annotation\Handler\ResponseFormatHandler
+        arguments: [@request]
+        tags:
+            - { name: "rest.annotation_handler", dispatch_event: false }
