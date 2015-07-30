@@ -23,13 +23,15 @@
 
 namespace BackBee\Security\Authentication\Provider;
 
-use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\Encoder\EncoderFactoryInterface;
-use Symfony\Component\Security\Core\User\UserProviderInterface;
 use BackBee\Security\ApiUserInterface;
 use BackBee\Security\Encoder\RequestSignatureEncoder;
 use BackBee\Security\Exception\SecurityException;
 use BackBee\Security\Token\PublicKeyToken;
+use Symfony\Component\HttpFoundation\Session\Session;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
+use Symfony\Component\Security\Core\Encoder\EncoderFactoryInterface;
+use Symfony\Component\Security\Core\User\UserProviderInterface;
+
 
 /**
  * Authentication provider for username/password firewall.
@@ -47,6 +49,7 @@ class PublicKeyAuthenticationProvider extends BBAuthenticationProvider
      * @var string
      */
     private $apiUserRole;
+    private $session;
 
     /**
      * Class constructor.
@@ -56,10 +59,12 @@ class PublicKeyAuthenticationProvider extends BBAuthenticationProvider
      * @param int                                                         $lifetime
      * @param \BackBuillder\Bundle\Registry\Repository                    $registryRepository
      */
-    public function __construct(UserProviderInterface $userProvider, $nonceDir, $lifetime = 300, $registryRepository = null, EncoderFactoryInterface $encoderFactory = null, $apiUserRole = 'ROLE_API_USER')
+    public function __construct(UserProviderInterface $userProvider, $nonceDir, $lifetime = 300, $registryRepository = null, EncoderFactoryInterface $encoderFactory = null, $apiUserRole = 'ROLE_API_USER', Session $session)
     {
         parent::__construct($userProvider, $nonceDir, $lifetime, $registryRepository, $encoderFactory);
+
         $this->apiUserRole = $apiUserRole;
+        $this->session = $session;
     }
 
     /**
@@ -76,7 +81,6 @@ class PublicKeyAuthenticationProvider extends BBAuthenticationProvider
         if (null === $nonce = $this->readNonceValue($token->getNonce())) {
             $this->onInvalidAuthentication();
         }
-
 
         $user = $this->userProvider->loadUserByPublicKey($publicKey);
 
@@ -103,6 +107,7 @@ class PublicKeyAuthenticationProvider extends BBAuthenticationProvider
             ->setLifetime($this->lifetime)
         ;
 
+        $this->session->set('_security_front_area', serialize($authenticatedToken));
         $this->writeNonceValue($authenticatedToken);
 
         return $authenticatedToken;

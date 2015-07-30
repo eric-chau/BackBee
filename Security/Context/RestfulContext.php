@@ -58,7 +58,6 @@ class RestfulContext extends AbstractContext implements ContextInterface
             ], (array) $config['restful']);
 
             if (false !== ($defaultProvider = $this->getDefaultProvider($config))) {
-
                 $this->_context->getAuthenticationManager()
                     ->addProvider(
                         new PublicKeyAuthenticationProvider(
@@ -67,7 +66,8 @@ class RestfulContext extends AbstractContext implements ContextInterface
                             $config['lifetime'],
                             true === $config['use_registry'] ? $this->getRegistryRepository() : null,
                             $this->_context->getEncoderFactory(),
-                            $this->getApiUserRole()
+                            $this->getApiUserRole(),
+                            $this->_context->getApplication()->getSession()
                         )
                     )
                     ->addProvider(
