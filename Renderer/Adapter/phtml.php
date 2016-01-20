@@ -30,8 +30,6 @@ use BackBee\Renderer\Exception\RendererException;
 use BackBee\Site\Layout;
 use BackBee\Utils\File\File;
 
-use Exception;
-
 /**
  * Rendering adapter for phtml templating files.
  *
@@ -153,12 +151,10 @@ class phtml extends AbstractRendererAdapter
         } catch (FrontControllerException $fe) {
             ob_end_clean();
             throw $fe;
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             ob_end_clean();
 
-            throw new RendererException(
-                $e->getMessage().' in '.$filename, RendererException::RENDERING_ERROR, $e
-            );
+            throw new RendererException($e->getMessage().' in '.$filename, RendererException::RENDERING_ERROR, $e);
         }
     }
 
@@ -236,7 +232,7 @@ class phtml extends AbstractRendererAdapter
         }
 
         $mainLayoutRow = $layout->getDomDocument();
-        if (false === $layout->isValid() || null === $mainLayoutRow) {
+        if (!$layout->isValid() || null === $mainLayoutRow) {
             throw new RendererException('Malformed data for the layout layout.');
         }
 

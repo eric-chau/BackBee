@@ -72,7 +72,7 @@ class ClassContentListener
 
     /**
      * Occurs on classcontent.postload events.
-     * 
+     *
      * @param Event $event
      */
     public static function onPostload(Event $event)
@@ -82,7 +82,7 @@ class ClassContentListener
 
     /**
      * Occurs on classcontent.onflush events.
-     * 
+     *
      * @param Event $event
      */
     public static function onFlushContent(Event $event)
@@ -208,7 +208,7 @@ class ClassContentListener
 
     /**
      * Occurs on element.file.postremove events.
-     * 
+     *
      * @param Event $event
      */
     public static function onRemoveElementFile(Event $event)
@@ -238,7 +238,7 @@ class ClassContentListener
 
     /**
      * Occurs on rest.controller.classcontentcontroller.getAction.postcall events.
-     * 
+     *
      * @param Event $event
      */
     public static function onPostCall(Event $event)
@@ -287,10 +287,9 @@ class ClassContentListener
     {
         $application = $event->getTarget();
         $container = $application->getContainer();
+        $parameter = true;
         if ($container->hasParameter('bbapp.classcontent.exception_on_unknown_classname')) {
             $parameter = $container->getParameter('bbapp.classcontent.exception_on_unknown_classname');
-        } else {
-            $parameter = true;
         }
 
         if ('debug' === strtolower($parameter)) {

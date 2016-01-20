@@ -62,7 +62,7 @@ abstract class AbstractRendererAdapter implements RendererAdapterInterface
      */
     public function __call($method, $argv)
     {
-        return call_user_func_array(array($this->renderer, $method), $argv);
+        return call_user_func_array([$this->renderer, $method], $argv);
     }
 
     /**
@@ -78,7 +78,7 @@ abstract class AbstractRendererAdapter implements RendererAdapterInterface
      */
     public function getManagedFileExtensions()
     {
-        return array();
+        return [];
     }
 
     /**

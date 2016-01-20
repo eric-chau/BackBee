@@ -85,12 +85,12 @@ class FrontController implements HttpKernelInterface
     /**
      * @var boolean
      */
-    protected $force_url_extension = true;
+    protected $forceUrlExt = true;
 
     /**
      * @var string
      */
-    protected $url_extension;
+    protected $urlExt;
 
     /**
      * Class constructor.
@@ -99,26 +99,24 @@ class FrontController implements HttpKernelInterface
      *
      * @param \BackBee\BBApplication $application The current BBapplication
      */
-    public function __construct(BBApplication $application = null)
+    public function __construct(BBApplication $application)
     {
         $this->application = $application;
 
-        if (null !== $application) {
-            if (null !== $parameters_config = $application->getConfig()->getParametersConfig()) {
-                if (true === array_key_exists('force_url_extension', $parameters_config)) {
-                    $this->force_url_extension = $parameters_config['force_url_extension'];
-                }
-            }
-
-            if (false === $this->getRouteCollection()->isRestored()) {
-                $route = $application->getConfig()->getRouteConfig();
-                if (true === is_array($route) && 0 < count($route)) {
-                    $this->registerRoutes('controller', $route);
-                }
+        if (null !== $paramsConfig = $application->getConfig()->getParametersConfig()) {
+            if (isset($paramsConfig['force_url_extension'])) {
+                $this->forceUrlExt = (bool) $paramsConfig['force_url_extension'];
             }
         }
 
-        $this->url_extension = self::DEFAULT_URL_EXTENSION;
+        if (!$this->getRouteCollection()->isRestored()) {
+            $route = $application->getConfig()->getRouteConfig();
+            if (is_array($route) && 0 < count($route)) {
+                $this->registerRoutes('controller', $route);
+            }
+        }
+
+        $this->urlExt = self::DEFAULT_URL_EXTENSION;
 
         register_shutdown_function(array($this, 'terminate'));
     }
@@ -145,7 +143,7 @@ class FrontController implements HttpKernelInterface
     public function getRequest()
     {
         if (null === $this->request) {
-            $this->request = $this->getApplication()->getContainer()->get('request');
+            $this->request = $this->application->getContainer()->get('request');
         }
 
         return $this->request;
@@ -170,7 +168,7 @@ class FrontController implements HttpKernelInterface
      */
     public function isUrlExtensionRequired()
     {
-        return $this->force_url_extension;
+        return $this->forceUrlExt;
     }
 
     /**
@@ -180,7 +178,7 @@ class FrontController implements HttpKernelInterface
      */
     public function getUrlExtension()
     {
-        return $this->url_extension;
+        return $this->urlExt;
     }
 
     /**
@@ -201,18 +199,16 @@ class FrontController implements HttpKernelInterface
         $event = new GetResponseEvent($this, $this->getRequest(), $type);
         $this->application->getEventDispatcher()->dispatch(KernelEvents::REQUEST, $event);
 
-        try {
-            if (null !== $request) {
-                $this->request = $request;
-            }
+        if (null !== $request) {
+            $this->request = $request;
+        }
 
+        try {
             // resolve url
             if (!$this->getRequest()->attributes->get('_controller')) {
                 $urlMatcher = new UrlMatcher($this->getRouteCollection(), $this->getRequestContext());
                 $matches = $urlMatcher->match($this->getRequest()->getPathInfo());
-
                 if (!isset($matches['_controller'])) {
-                    // set default controller to this
                     $matches['_controller'] = $this;
                 }
 
@@ -223,7 +219,10 @@ class FrontController implements HttpKernelInterface
                 return $this->invokeAction($type);
             }
 
-            throw new FrontControllerException(sprintf('Unable to handle URL `%s`.', $this->getRequest()->getHost().'/'.$this->getRequest()->getPathInfo()), FrontControllerException::NOT_FOUND);
+            throw new FrontControllerException(sprintf(
+                'Unable to handle URL `%s`.',
+                $this->getRequest()->getHost().'/'.$this->getRequest()->getPathInfo()
+            ), FrontControllerException::NOT_FOUND);
         } catch (\Exception $e) {
             if (false === $catch) {
                 throw $e;
@@ -244,106 +243,76 @@ class FrontController implements HttpKernelInterface
      */
     public function defaultAction($uri = null, $sendResponse = true)
     {
-        if (null === $this->application) {
-            throw new FrontControllerException('A valid BackBee application is required.', FrontControllerException::INTERNAL_ERROR);
-        }
-
-        if (false === $this->application->getContainer()->has('site')) {
-            throw new FrontControllerException('A BackBee\Site instance is required.', FrontControllerException::INTERNAL_ERROR);
-        }
-
-        $site = $this->application->getContainer()->get('site');
-
-        preg_match('/(.*)(\.['.$this->url_extension.']+)/', $uri, $matches);
-        if (
-            (
-                '_root_' !== $uri
-                && '/' !== $uri[strlen($uri) - 1]
-                && 0 === count($matches)
-                && true === $this->force_url_extension
-            ) || (0 < count($matches) && true === isset($matches[2]) && $site->getDefaultExtension() !== $matches[2])
-        ) {
-            throw new FrontControllerException(sprintf(
-                'The URL `%s` can not be found.', $this->getRouteCollection()->getUri($uri)), FrontControllerException::NOT_FOUND
+        if (!$this->application->getContainer()->has('site')) {
+            throw new FrontControllerException(
+                'A BackBee\Site instance is required.',
+                FrontControllerException::INTERNAL_ERROR
             );
         }
 
-        $uri = preg_replace('/(.*)\.'.$this->url_extension.'?$/i', '$1', $uri);
-
-        $redirect_page = null !== $this->application->getRequest()->get('bb5-redirect', null)
-            ? ('false' !== $this->application->getRequest()->get('bb5-redirect'))
-            : true
-        ;
-
-        if ('_root_' == $uri) {
-            $page = $this->application->getEntityManager()
-                ->getRepository('BackBee\NestedNode\Page')
-                ->getRoot($site)
-            ;
-        } else {
-            $page = $this->application->getEntityManager()
-                ->getRepository('BackBee\NestedNode\Page')
-                ->findOneBy(array(
-                    '_site' => $site,
-                    '_url' => '/'.$uri,
-                    '_state' => Page::getUndeletedStates(),
-                ))
-            ;
+        $site = $this->application->getContainer()->get('site');
+        preg_match('/(.*)(\.'.$this->urlExt.')/', $uri, $matches);
+        if (
+            ('_root_' !== $uri && 1 !== preg_match('~/$~', $uri) && 0 === count($matches) && $this->forceUrlExt)
+            || (0 < count($matches) && isset($matches[2]) && $site->getDefaultExtension() !== $matches[2])
+        ) {
+            throw new FrontControllerException(sprintf(
+                'The URL `%s` can not be found.',
+                $this->getRouteCollection()->getUri($uri)
+            ), FrontControllerException::NOT_FOUND);
         }
 
-        if (null !== $page && false === $page->isOnline()) {
-            $page = (null === $this->application->getBBUserToken()) ? null : $page;
+        $uri = preg_replace('/(.*)\.'.$this->urlExt.'?$/i', '$1', $uri);
+        if ('_root_' === $uri) {
+            $page = $this->application->getEntityManager()->getRepository('BackBee\NestedNode\Page')->getRoot($site);
+        } else {
+            $page = $this->application->getEntityManager()->getRepository('BackBee\NestedNode\Page')->findOneBy([
+                '_site'  => $site,
+                '_url'   => "/$uri",
+                '_state' => Page::getUndeletedStates(), // TO TEST
+            ]);
+        }
+
+        if (null !== $page && !$page->isOnline()) {
+            $page = $this->application->getBBUserToken() ? $page : null;
         }
 
         if (null === $page) {
-            throw new FrontControllerException(sprintf('The URL `%s` can not be found.', $this->request->getHost().'/'.$uri), FrontControllerException::NOT_FOUND);
+            throw new FrontControllerException(sprintf(
+                'The URL `%s` can not be found.',
+                $this->request->getHost() . '/' . $uri
+            ), FrontControllerException::NOT_FOUND);
         }
 
+
         if ((null !== $redirect = $page->getRedirect()) && $page->getUseUrlRedirect()) {
-            if ((null === $this->application->getBBUserToken()) || ((null !== $this->application->getBBUserToken()) && (true === $redirect_page))) {
-                $redirect = $this->application->getRenderer()->getUri($redirect);
+            $redirect = $this->application->getRouting()->getUri($redirect);
 
-                $response = new RedirectResponse($redirect, 301, [
-                    'Cache-Control' => 'no-store, no-cache, must-revalidate',
-                    'Expires' => 'Thu, 01 Jan 1970 00:00:00 GMT',
-                    ]
-                );
-
-                $this->send($response);
-                $this->application->stop();
-            }
+            return new RedirectResponse($redirect, Response::HTTP_MOVED_PERMANENTLY, [
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+                'Expires'       => 'Thu, 01 Jan 1970 00:00:00 GMT',
+            ]);
         }
 
         try {
-            $this->application->info(sprintf('Handling URL request `%s`.', $uri));
+            $this->application->info("Handling URL request `$uri`.");
 
             $event = new PageFilterEvent($this, $this->application->getRequest(), self::MASTER_REQUEST, $page);
             $this->application->getEventDispatcher()->dispatch('application.page', $event);
 
-            if (null !== $this->getRequest()->get('bb5-mode')) {
-                $response = new Response($this->application->getRenderer()->render($page, $this->getRequest()->get('bb5-mode')));
-            } else {
-                $response = new Response($this->application->getRenderer()->render($page));
-            }
-
-            if ($sendResponse) {
-                $this->send($response);
-            } else {
-                return $response;
-            }
+            return new Response($this->application->getRenderer()->render($page));
         } catch (FrontControllerException $fe) {
             throw $fe;
         } catch (\Exception $e) {
-            throw new FrontControllerException(sprintf('An error occured while rendering URL `%s`.', $this->request->getHost().'/'.$uri), FrontControllerException::INTERNAL_ERROR, $e);
+            throw new FrontControllerException(sprintf(
+                'An error occured while rendering URL `%s`.',
+                $this->request->getHost() . '/' . $uri
+            ), FrontControllerException::INTERNAL_ERROR, $e);
         }
     }
 
     public function rssAction($uri = null)
     {
-        if (null === $this->application) {
-            throw new FrontControllerException('A valid BackBee application is required.', FrontControllerException::INTERNAL_ERROR);
-        }
-
         if (false === $this->application->getContainer()->has('site')) {
             throw new FrontControllerException('A BackBee\Site instance is required.', FrontControllerException::INTERNAL_ERROR);
         }
@@ -396,24 +365,24 @@ class FrontController implements HttpKernelInterface
     }
 
     /**
-     * Register every valid route defined in $route_config array.
+     * Register every valid route defined in $routeConfig array.
      *
-     * @param mixed      $default_controller used as default controller if a route comes without any specific controller
-     * @param array|null $route_config
+     * @param mixed      $defaultController used as default controller if a route comes without any specific controller
+     * @param array|null $routeConfig
      */
-    public function registerRoutes($default_controller, array $route_config)
+    public function registerRoutes($defaultController, array $routeConfig)
     {
-        foreach ($route_config as $name => &$route) {
-            if (false === isset($route['defaults']) || false === isset($route['defaults']['_action'])) {
-                $this->getApplication()->warning("Unable to parse the action method for the route `$name`.");
+        foreach ($routeConfig as $name => &$route) {
+            if (!isset($route['defaults']) || !isset($route['defaults']['_action'])) {
+                $this->application->warning("Unable to parse the action method for the route `$name`.");
                 continue;
             }
 
-            if (false === array_key_exists('_controller', $route['defaults'])) {
-                $route['defaults']['_controller'] = $default_controller;
+            if (!array_key_exists('_controller', $route['defaults'])) {
+                $route['defaults']['_controller'] = $defaultController;
             }
 
-            if (false === is_string($route['defaults']['_controller'])) {
+            if (!is_string($route['defaults']['_controller'])) {
                 throw new FrontControllerException(
                     'Route controller must be type of string. '
                     .'Please provide controller namespace or controller service id instead of '
@@ -423,7 +392,7 @@ class FrontController implements HttpKernelInterface
         }
 
         $router = $this->getRouteCollection();
-        $router->pushRouteCollection($route_config);
+        $router->pushRouteCollection($routeConfig);
     }
 
     /**
@@ -441,7 +410,7 @@ class FrontController implements HttpKernelInterface
      */
     public function terminate()
     {
-        if (!$this->application || false === $this->application->isStarted()) {
+        if (!$this->application->isStarted()) {
             return;
         }
 
@@ -474,53 +443,6 @@ class FrontController implements HttpKernelInterface
         return $this->requestContext;
     }
 
-    /**
-     * Dispatches GetResponseEvent.
-     *
-     * @access private
-     *
-     * @param string  $eventName        The name of the event to dispatch
-     * @param integer $type             The type of the request
-     *                                  (one of HttpKernelInterface::MASTER_REQUEST or HttpKernelInterface::SUB_REQUEST)
-     * @param boolean $stopWithResponse Send response if TRUE and response exists
-     */
-    private function dispatch($eventName, $controller = null, $type = self::MASTER_REQUEST, $stopWithResponse = true)
-    {
-        if (null === $this->application) {
-            return;
-        }
-
-        if (null !== $this->application->getEventDispatcher()) {
-            $event = new GetResponseEvent(null === $controller ? $this : $controller, $this->getRequest(), $type);
-            $this->application->getEventDispatcher()->dispatch($eventName, $event);
-
-            if ($stopWithResponse && $event->hasResponse()) {
-                $this->send($event->getResponse());
-            }
-        }
-    }
-
-    /**
-     * Dispatch FilterResponseEvent then send response.
-     *
-     * @acces private
-     *
-     * @param Response $response The response to filter then send
-     * @param integer  $type     The type of the request
-     *                           (one of HttpKernelInterface::MASTER_REQUEST or HttpKernelInterface::SUB_REQUEST)
-     */
-    private function send(Response $response, $type = self::MASTER_REQUEST)
-    {
-        if (null !== $this->application && null !== $this->application->getEventDispatcher()) {
-            $event = new FilterResponseEvent($this, $this->getRequest(), $type, $response);
-            $this->application->getEventDispatcher()->dispatch('frontcontroller.response', $event);
-            $this->application->getEventDispatcher()->dispatch(KernelEvents::RESPONSE, $event);
-        }
-
-        $response->send();
-        $this->response = $response;
-        $this->application->stop();
-    }
 
     /**
      * Invokes associated action to the current request.
@@ -536,14 +458,13 @@ class FrontController implements HttpKernelInterface
         $this->dispatch('frontcontroller.request');
 
         $request = $this->getRequest();
-        $controllerResolver = $this->getApplication()->getContainer()->get('controller_resolver');
+        $controllerResolver = $this->application->getContainer()->get('controller_resolver');
         $controller = $controllerResolver->getController($request);
 
         // logout Event dispatch
         if (
-            null !== $request->get('logout')
-            && true === $request->get('logout')
-            && true === $this->getApplication()->getSecurityContext()->isGranted('IS_AUTHENTICATED_FULLY')
+            true === $request->get('logout')
+            && $this->application->getSecurityContext()->isGranted('IS_AUTHENTICATED_FULLY')
         ) {
             $this->dispatch('frontcontroller.request.logout');
         }
@@ -551,7 +472,6 @@ class FrontController implements HttpKernelInterface
         if (null !== $controller) {
             $dispatcher = $this->application->getEventDispatcher();
 
-            // dispatch kernel.controller event
             $event = new FilterControllerEvent($this, $controller, $request, $type);
             $dispatcher->dispatch(KernelEvents::CONTROLLER, $event);
 
@@ -561,7 +481,6 @@ class FrontController implements HttpKernelInterface
             $eventName = $this->getControllerActionEventName($controller[0], $request->attributes->get('_action'));
             $dispatcher->dispatch($eventName.'.precall', new Event\PreRequestEvent($request));
 
-            // get controller action arguments
             $actionArguments = $controllerResolver->getArguments($request, $controller);
 
             $response = call_user_func_array($controller, $actionArguments);
@@ -574,6 +493,45 @@ class FrontController implements HttpKernelInterface
                 FrontControllerException::BAD_REQUEST
             );
         }
+    }
+
+    /**
+     * Dispatches GetResponseEvent.
+     *
+     * @access private
+     *
+     * @param string  $eventName        The name of the event to dispatch
+     * @param integer $type             The type of the request
+     *                                  (one of HttpKernelInterface::MASTER_REQUEST or HttpKernelInterface::SUB_REQUEST)
+     * @param boolean $stopWithResponse Send response if TRUE and response exists
+     */
+    private function dispatch($eventName, $controller = null, $type = self::MASTER_REQUEST, $stopWithResponse = true)
+    {
+        $event = new GetResponseEvent($controller ? $controller : $this, $this->getRequest(), $type);
+        $this->application->getEventDispatcher()->dispatch($eventName, $event);
+
+        if ($stopWithResponse && $event->hasResponse()) {
+            $this->send($event->getResponse());
+        }
+    }
+
+    /**
+     * Dispatch FilterResponseEvent then send response.
+     *
+     * @acces private
+     *
+     * @param Response $response The response to filter then send
+     * @param integer  $type     The type of the request
+     *                           (one of HttpKernelInterface::MASTER_REQUEST or HttpKernelInterface::SUB_REQUEST)
+     */
+    private function send(Response $response, $type = self::MASTER_REQUEST)
+    {
+        $event = new FilterResponseEvent($this, $this->getRequest(), $type, $response);
+        $this->application->getEventDispatcher()->dispatch('frontcontroller.response', $event);
+        $this->application->getEventDispatcher()->dispatch(KernelEvents::RESPONSE, $event);
+
+        $response->send();
+        $this->response = $response;
     }
 
     /**

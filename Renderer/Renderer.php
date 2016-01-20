@@ -44,7 +44,7 @@ use Symfony\Component\HttpFoundation\ParameterBag;
  * @category    BackBee
  *
  * @copyright   Lp digital system
- * @author      e.chau <eric.chau@lp-digital.fr>
+ * @author      Eric Chau <eric.chau@lp-digital.fr>
  */
 class Renderer extends AbstractRenderer implements DumpableServiceInterface, DumpableServiceProxyInterface
 {
@@ -102,14 +102,15 @@ class Renderer extends AbstractRenderer implements DumpableServiceInterface, Dum
      * @param array|null    $config
      * @param boolean       $autoloadRendererApdater
      */
-    public function __construct(BBApplication $application = null, $config = null, $autoloadRendererApdater = true)
+    public function __construct(BBApplication $application, $config = null, $autoloadRendererApdater = true)
     {
         parent::__construct($application, $config);
+
         $this->rendererAdapters = new ParameterBag();
         $this->manageableExt = new ParameterBag();
         $this->externalResources = new ParameterBag();
 
-        if (null !== $application && true === $autoloadRendererApdater) {
+        if (true === $autoloadRendererApdater) {
             $this->autoloadAdapters();
         }
 
@@ -123,8 +124,8 @@ class Renderer extends AbstractRenderer implements DumpableServiceInterface, Dum
     public function updatesAfterClone()
     {
         $this->updateHelpers();
-        foreach ($this->rendererAdapters->all() as $ra) {
-            $ra->onNewRenderer($this);
+        foreach ($this->rendererAdapters->all() as $adapter) {
+            $adapter->onNewRenderer($this);
         }
 
         return $this;
